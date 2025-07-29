@@ -43,7 +43,7 @@
           <p class="mt-6 text-gray-600 font-medium">Förbereder säker verifiering...</p>
         </div>
 
-        <div v-else-if="state === 'waiting'" class="text-center">
+        <div v-else-if="state === 'waiting'" class="text-center" >
           <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-8 mb-6">
             <div class="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full shadow-lg mb-4">
               <svg class="w-8 h-8 text-blue-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -52,7 +52,10 @@
             </div>
             <h2 class="text-xl font-semibold text-gray-800 mb-2">Väntar på din plånbok</h2>
             <p class="text-gray-600 mb-6">Öppna din digitala plånbok för att slutföra verifieringen</p>
-            <a :href="authUrl" @click="startPolling" target="_blank" class="group inline-flex items-center justify-center px-8 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-medium rounded-xl hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200">
+            <div class="flex items-center justify-center bg-white rounded-2xl p-8 shadow-lg mb-4">
+              <Qrcode :value="openid4vp"/>  
+            </div>
+            <a :href="authUrl" target="_blank" class="group inline-flex items-center justify-center px-8 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-medium rounded-xl hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200">
               <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
               </svg>
@@ -150,12 +153,15 @@
 </template>
 
 <script setup>
+
+const TIMELIMIT = 90;
 const state = ref('idle')
 const transactionId = ref(null)
 const authUrl = ref(null)
+const openid4vp = ref(null)
 const credentials = ref(null)
 const error = ref(null)
-const timeLeft = ref(90)
+const timeLeft = ref(TIMELIMIT)
 const polling = ref(null)
 
 const presentationDefinition = {
@@ -203,7 +209,7 @@ const startVerification = async () => {
     transactionId.value = response.transaction_id || response.transactionId
     const requestUri = response.request_uri || response.authorizationUrl
     const clientId = response.client_id || 'Verifier'
-    
+    openid4vp.value = `openid4vp://cb?client_id=${encodeURIComponent(clientId)}&request_uri=${encodeURIComponent(requestUri)}`
     authUrl.value = `http://localhost:3000/cb?client_id=${encodeURIComponent(clientId)}&request_uri=${encodeURIComponent(requestUri)}`
     state.value = 'waiting'
     startCountdown()
@@ -211,6 +217,7 @@ const startVerification = async () => {
     state.value = 'error'
     error.value = e.data?.message || e.message || 'Kunde inte starta verifieringen'
   }
+  startPolling()
 }
 
 const startPolling = () => {
@@ -224,12 +231,12 @@ const startPolling = () => {
         clearInterval(polling.value)
         state.value = 'success'
         credentials.value = result.verifiedCredentials
-        timeLeft.value = 90
+        timeLeft.value = TIMELIMIT
       } else if (result.status === 'error' || result.status === 'expired') {
         clearInterval(polling.value)
         state.value = 'error'
         error.value = result.error || 'Verifieringen kunde inte slutföras'
-        timeLeft.value = 90
+        timeLeft.value = TIMELIMIT
       }
     } catch (e) {
       console.error('Polling error:', e)
@@ -261,7 +268,7 @@ const reset = () => {
   authUrl.value = null
   credentials.value = null
   error.value = null
-  timeLeft.value = 90
+  timeLeft.value = TIMELIMIT
   if (polling.value) {
     clearInterval(polling.value)
     polling.value = null

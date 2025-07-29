@@ -3,13 +3,25 @@ export default defineNuxtConfig({
   compatibilityDate: "2025-05-15",
   devtools: { enabled: true },
   devServer: { port: 3002 },
-  modules: ["@nuxtjs/tailwindcss"],
+  modules: ["@nuxtjs/tailwindcss", "nuxt-qrcode"],
   typescript: {
     typeCheck: false,
   },
   runtimeConfig: {
     public: {
       hostApi: process.env.HOST_API || "http://eudi-verifier",
+    },
+  },
+  qrcode: {
+    options: {
+      variant: {
+        inner: "circle",
+        marker: "rounded",
+        pixel: "rounded",
+      },
+      radius: 1,
+      blackColor: "currentColor",
+      whiteColor: "transparent",
     },
   },
   nitro: {
