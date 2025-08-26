@@ -48,8 +48,15 @@ store_exit_code() {
 lint_and_format() {
   export MEGALINTER_DEF_WORKSPACE='/repo'
   print_header 'LINTER HEALTH (MEGALINTER)'
-  docker run --rm --volume "$(pwd)":/repo -e MEGALINTER_CONFIG='development/megalinter.yml' -e DEFAULT_WORKSPACE=${MEGALINTER_DEF_WORKSPACE} -e LOG_LEVEL=INFO ghcr.io/oxsecurity/megalinter-javascript:v8.7.0
-  store_exit_code "$?" "Lint" "${MISSING} ${RED}Lint check failed, see logs (std out and/or ./megalinter-reports) and fix problems.${NC}\n" "${GREEN}${CHECKMARK}${CHECKMARK} Lint check passed${NC}\n"
+  docker run --rm --volume "$(pwd)":/repo \
+    -e MEGALINTER_CONFIG='development/megalinter.yml' \
+    -e DEFAULT_WORKSPACE=${MEGALINTER_DEF_WORKSPACE} \
+    -e SKIP_LINTER_OUTPUT_SANITIZATION="${MEGALINTER_SKIP_LINTER_OUTPUT_SANITIZATION}" \
+    -e LOG_LEVEL=INFO \
+    ghcr.io/oxsecurity/megalinter-javascript:v8.1.0
+  store_exit_code "$?" "Lint" \
+    "${MISSING} ${RED}Lint check failed, see logs (std out and/or ./megalinter-reports) and fix problems.${NC}\n" \
+    "${GREEN}${CHECKMARK}${CHECKMARK} Lint check passed${NC}\n"
   printf '\n\n'
 }
 
@@ -60,11 +67,18 @@ commit() {
   print_header 'COMMIT HEALTH (CONFORM)'
 
   if [[ "$(git rev-list --count ${compareToBranch}..)" == 0 ]]; then
-    printf "%s" "${GREEN} No commits found in current branch: ${YELLOW}${currentBranch}${NC}, compared to: ${YELLOW}${compareToBranch}${NC} ${NC}"
-    store_exit_code "$?" "Commit" "${MISSING} ${RED}Commit check count failed, see logs (std out) and fix problems.${NC}\n" "${YELLOW}${CHECKMARK}${CHECKMARK} Commit check skipped, no new commits found in current branch: ${YELLOW}${currentBranch}${NC}\n"
+    printf "%s" \
+      "${GREEN} No commits found in current branch: ${YELLOW}${currentBranch}${NC}, compared to: ${YELLOW}${compareToBranch}${NC} ${NC}"
+    store_exit_code "$?" "Commit" \
+      "${MISSING} ${RED}Commit check count failed, see logs (std out) and fix problems.${NC}\n" \
+      "${YELLOW}${CHECKMARK}${CHECKMARK} Commit check skipped, no new commits found in current branch: ${YELLOW}${currentBranch}${NC}\n"
   else
-    docker run --rm -i --volume "$(pwd)":/repo -w /repo ghcr.io/siderolabs/conform:v0.1.0-alpha.30-2-gfadbbb4 enforce --base-branch="${compareToBranch}"
-    store_exit_code "$?" "Commit" "${MISSING} ${RED}Commit check failed, see logs (std out) and fix problems.${NC}\n" "${GREEN}${CHECKMARK}${CHECKMARK} Commit check passed${NC}\n"
+    docker run --rm -i --volume "$(pwd)":/repo -w /repo \
+      ghcr.io/siderolabs/conform:v0.1.0-alpha.30-2-gfadbbb4 \
+      enforce --base-branch="${compareToBranch}"
+    store_exit_code "$?" "Commit" \
+      "${MISSING} ${RED}Commit check failed, see logs (std out) and fix problems.${NC}\n" \
+      "${GREEN}${CHECKMARK}${CHECKMARK} Commit check passed${NC}\n"
   fi
 
   printf '\n\n'

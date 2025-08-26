@@ -1,75 +1,127 @@
 # wallet-verifier-test-web
 
-[![Version](https://img.shields.io/github/v/tag/diggsweden/open-source-project-template?style=for-the-badge&color=green&label=Version)](https://github.com/diggswedenn/open-source-project-template/tags])
-[![REUSE](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.reuse.software%2Fstatus%2Fgithub.com%2Fdiggsweden%2Fopen-source-project-template&query=status&style=for-the-badge&label=REUSE)](https://api.reuse.software/info/github.com/diggsweden/open-source-project-template)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jahwag/wallet-verifier-test-web/badge?style=for-the-badge)](https://scorecard.dev/viewer/?uri=github.com/diggsweden/wallet-verifier-test-web)
+[![REUSE](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.reuse.software%2Fstatus%2Fgithub.com%2Fdiggsweden%2Fwallet-verifier-test-web&query=status&style=for-the-badge&label=REUSE)](https://api.reuse.software/info/github.com/diggsweden/wallet-verifier-test-web)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/diggsweden/wallet-verifier-test-web/badge?style=for-the-badge)](https://scorecard.dev/viewer/?uri=github.com/diggsweden/wallet-verifier-test-web)
 ![Standard for Public Code Commitment](https://img.shields.io/badge/Standard%20for%20Public%20Code%20Commitment-green?style=for-the-badge)
 
-## Run with Docker
+Demo application demonstrating how a relying party may implement authentication using EUDI wallet verification.
+
+## Quick Start
+
+### Docker
 
 ```bash
 npm install
 npm run generate
-docker compose  -f ./docker/docker-compose.yml up -d
+docker compose -f ./docker/docker-compose.yml up -d
 ```
 
-Then open [http://localhost:3002](http://localhost:3002) in your browser.
+Open [http://localhost:3002](http://localhost:3002)
 
-**Note:** If you see file access errors when running the `npm` commands,
-please try changing the owner of those files.
-
-```bash
-sudo chown -R $USER:$USER node_modules/ megalinter-reports/
-```
-
-## Wallet ecosystem
-
-In order to test the verifier with a complete environment
-including a wallet and an issuer, we provide
-[a script that runs the wwWallet ecosystem locally](
-    ./docker/scripts/wallet-ecosystem-http.sh
-).
-Please see [the readme in the docker directory](./docker/README.md)
-for details.
-
-## Live Development
-
-After starting Docker (see above), run:
+### Development
 
 ```bash
 npm run dev
 ```
 
-Visit [http://localhost:3002](http://localhost:3002) in your browser.
-
-**Note:** If you ran the docker compose command [above](#run-with-docker)
-or bootstrapped your you development environment using
-[the Wallet ecosystem script](./docker/scripts/wallet-ecosystem-http.sh),
-there will probably already be a service running on port 3002.
-Pay attention to the build output for the actual port used.
-
-**Note:** If you are running the environment in WSL
-but access the frontends using a web browser directly on your Windows host,
-you may need to modify the location of the backend.
+### Testing
 
 ```bash
-env HOST_API=http://localhost:8080 npm run dev
+npm run test        # watch mode
+npm run test:once   # single run
 ```
 
-## Running tests
+### Full Wallet Ecosystem
 
-To run the automated test suite, run:
+See [docker/README.md](./docker/README.md) for running a complete wwWallet ecosystem with this application.
 
-```bash
-npm run test
+## Architecture
+
+```mermaid
+graph TB
+    subgraph "User's Browser"
+        Frontend[Nuxt Frontend<br/>Port 3002]
+    end
+    
+    subgraph "Server (Nuxt)"
+        ServerAPI[Server API<br/>Nitro Endpoints]
+        Memory[(In-Memory<br/>Storage)]
+    end
+    
+    subgraph "External Services"
+        Backend[EUDI Backend<br/>Port 8080]
+        Wallet[Digital Wallet<br/>Port 3000]
+    end
+    
+    Frontend <--> ServerAPI
+    ServerAPI <--> Backend
+    ServerAPI <--> Memory
+    Wallet --> ServerAPI
+    Wallet <--> Backend
+    Frontend -.->|Redirect| Wallet
 ```
 
-**Note:** On a development machine,
-the above will start the tests in watch mode.
-That is, the tests will rerun automatically on any file change.
+### Verification Flow
 
-To run the test suite only once, run:
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant ServerAPI
+    participant Backend
+    participant Wallet
+    participant Memory
 
-```bash
-npm run test:once
+    User->>Frontend: Click "Login with wallet"
+    Frontend->>ServerAPI: POST /api/verifier-request<br/>(presentation_definition)
+    ServerAPI->>Backend: POST /ui/presentations<br/>(type, nonce, presentation_definition)
+    Backend-->>ServerAPI: Response:<br/>transaction_id, request_uri, client_id
+    ServerAPI-->>Frontend: Normalized response
+    
+    Frontend->>User: Show "Open wallet" button
+    User->>Frontend: Click "Open wallet"
+    Frontend->>Wallet: Redirect to http://localhost:3000/cb<br/>with client_id & request_uri
+    
+    Note over Frontend: Start 90-second timer<br/>Start polling after 5s
+    
+    Wallet->>Backend: GET /wallet/request.jwt/{requestId}
+    Backend-->>Wallet: Signed JWT with presentation definition
+    
+    Wallet->>User: Request approval
+    User->>Wallet: Approve/Reject
+    
+    alt User Approves
+        Wallet->>ServerAPI: POST /api/verifier-callback<br/>(vp_token, state)
+        ServerAPI->>Memory: Store verification result
+        ServerAPI-->>Wallet: Success
+    else User Rejects
+        Note over Wallet: No callback sent
+    end
+    
+    loop Every 2 seconds (max 90 seconds)
+        Frontend->>ServerAPI: GET /api/verifier-status/{id}
+        ServerAPI->>Backend: GET /ui/presentations/{id}
+        
+        alt Backend has result
+            Backend-->>ServerAPI: vp_token (SD-JWT format)
+            ServerAPI->>ServerAPI: Parse SD-JWT claims
+        else Backend returns error/empty
+            ServerAPI->>Memory: Check fallback storage
+            alt Memory has result
+                Memory-->>ServerAPI: Stored verification
+            else No result yet
+                ServerAPI-->>Frontend: {status: "pending"}
+            end
+        end
+        
+        ServerAPI-->>Frontend: Status + credentials
+    end
+    
+    alt Success
+        Frontend->>User: Show verified credentials
+    else Timeout (90 seconds)
+        Frontend->>User: Show timeout error
+    else Verification Failed
+        Frontend->>User: Show error message
+    end
 ```
