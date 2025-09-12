@@ -71,7 +71,7 @@ jobs:
           file: ./src/main/docker/Dockerfile.build
           cache-from: type=gha
           cache-to: type=gha,mode=min
-          platforms: linux/amd64
+          platforms: linux/amd64, linux/arm64
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
